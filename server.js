@@ -2,10 +2,13 @@ const express = require('express');
 const axios = require('axios');
 require('dotenv').config();
 
+const cors = require('cors');
+
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.static('public')); // Para servir os arquivos estáticos do front-end
+app.use(cors());
 
 // Rota para buscar as coordenadas da cidade
 app.get('/api/coordinates/:city', async (req, res) => {
