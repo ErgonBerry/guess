@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cálculo de Distância - Versão Gamificada com Câmera</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #cameraBackground {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            object-fit: cover;
+            filter: blur(8px);
+        }
+        #card {
+            background-color: rgba(30, 30, 30, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            transition: all 0.3s;
+            z-index: 1;
+        }
+        #distanceOutput {
+            font-size: 24px;
+            color: #ff8c00;
+            animation: pulse 1s infinite;
+            margin: 20px 0;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #guessCard {
+            display: none;
+            background-color: rgba(30, 30, 30, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            margin-top: 20px;
+            z-index: 1;
+        }
+        #userGuessOutput {
+            margin-top: 20px;
+            font-size: 20px;
+            color: #00ff00;
+        }
+        #restartBtn {
+            display: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <video id="cameraBackground" autoplay muted></video>
+
+    <div id="card">
+        <h1>Calcule a Distância!!!</h1>
+        <p>Cidade: <span id="cityName"></span></p>
+        <button id="getLocationBtn">Continuar...</button>
+        <div id="distanceOutput"></div>
+        <div id="userGuessOutput"></div>
+    </div>
+
+    <div id="guessCard">
+        <p>Qual é a distância em linha reta de onde estou até <span id="guessCityName"></span></p>
+        <input type="number" id="guessInput" placeholder="distância em km">
+        <button id="submitGuessBtn">Enviar CHUTE...</button>
+        <div id="guessFeedback"></div>
+    </div>
+
+    <button id="restartBtn" onclick="restartGame()">Novamente</button>
+
+    <script>
+        const R = 6371; // Raio da Terra em km
+        let actualDistance;
+        let cities = [];
+    
+        function toRad(degree) {
+            return degree * (Math.PI / 180);
+        }
+    
+        function calculateDistance(coord1, coord2) {
+            const dLat = toRad(coord2.lat - coord1.lat);
+            const dLon = toRad(coord2.lon - coord1.lon);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distância em km
+        }
+    
+        async function fetchCities() {
+            try {
+                const response = await fetch('cities.json');
+                const data = await response.json();
+                cities = data.cities;
+            } catch (error) {
+                console.error("Erro ao carregar cidades:", error);
+            }
+        }
+    
+        async function fetchCoordinates(city) {
+            try {
+                const response = await fetch(`/api/coordinates/${encodeURIComponent(city)}`);
+                const data = await response.json();
+                if (data.lat && data.lon) {
+                    return {
+                        lat: data.lat,
+                        lon: data.lon
+                    };
+                } else {
+                    throw new Error("Cidade não encontrada");
+                }
+            } catch (error) {
+                alert("Erro ao buscar coordenadas: " + error.message);
+            }
+        }
+
+    
+        function selectRandomCity() {
+            const city = cities[Math.floor(Math.random() * cities.length)]; // Seleciona uma cidade aleatória
+            document.getElementById('cityName').textContent = city; // Exibe o nome da cidade
+            return city; // Retorna a cidade selecionada
+        }
+    
+        async function startGame() {
+            if (cities.length === 0) {
+                await fetchCities(); // Carrega as cidades se ainda não foram carregadas
+            }
+            const city = selectRandomCity(); // Seleciona uma cidade aleatória ao carregar
+            try {
+                const coordinates = await fetchCoordinates(city);
+                document.getElementById('getLocationBtn').onclick = function() {
+                    navigator.geolocation.getCurrentPosition(position => {
+                        const userCoords = {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        };
+                        actualDistance = calculateDistance(userCoords, coordinates);
+                        showGuessCard(city); // Passa a cidade para o cartão
+                    }, error => {
+                        alert("Erro ao obter localização: " + error.message);
+                    });
+                };
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    
+        function showGuessCard(city) {
+            document.getElementById('guessCityName').textContent = city; // Atualiza o nome da cidade no guessCard
+            document.getElementById('card').style.display = 'none';
+            document.getElementById('guessCard').style.display = 'block';
+        }
+    
+        document.getElementById('submitGuessBtn').addEventListener('click', () => {
+            const guess = parseFloat(document.getElementById('guessInput').value);
+            if (isNaN(guess)) {
+                alert("Por favor, digite um número válido.");
+                return;
+            }
+            displayDistanceFeedback(guess);
+        });
+    
+        function displayDistanceFeedback(guess) {
+            const roundedGuess = Math.round(guess);
+            const roundedActualDistance = Math.round(actualDistance);
+            const difference = Math.abs(roundedActualDistance - roundedGuess);
+    
+            let feedbackMessage = `A distância em linha reta até ${document.getElementById('guessCityName').textContent} é de ${roundedActualDistance} km.`;
+            const userGuessMessage = `O seu chute foi: ${roundedGuess} km.`;
+            
+            if (difference === 0) {
+                feedbackMessage += " Você acertou a distância exata! 🎉";
+            } else {
+                feedbackMessage += ` Você errou por ${difference} km.`;
+            }
+            
+            document.getElementById('distanceOutput').innerHTML = feedbackMessage;
+            document.getElementById('userGuessOutput').innerHTML = userGuessMessage;
+    
+            // Esconde o botão getLocationBtn
+            document.getElementById('getLocationBtn').style.display = 'none';
+    
+            document.getElementById('guessCard').style.display = 'none';
+            document.getElementById('card').style.display = 'block';
+            document.getElementById('restartBtn').style.display = 'block';
+        }
+    
+        function restartGame() {
+            document.getElementById('distanceOutput').innerHTML = '';
+            document.getElementById('userGuessOutput').innerHTML = '';
+            document.getElementById('guessCard').style.display = 'none';
+            document.getElementById('card').style.display = 'block';
+            document.getElementById('restartBtn').style.display = 'none';
+            document.getElementById('getLocationBtn').style.display = 'block'; // Exibe novamente o botão ao reiniciar o jogo
+            startGame(); // Reinicia o jogo
+        }
+    
+        // Inicializa a câmera
+        async function initCamera() {
+            const constraints = {
+                video: true
+            };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            document.getElementById('cameraBackground').srcObject = stream;
+        }
+    
+        window.onload = function() {
+            initCamera(); // Inicializa a câmera ao carregar a página
+            startGame(); // Inicia o jogo
+        };
+    </script>
+    
+</body>
+</html>
